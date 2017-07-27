@@ -29,7 +29,6 @@ spushd() {
 spopd() {
      popd 2>&1> /dev/null
 }
-
 info() {
      local green="\033[1;32m"
      local normal="\033[0m"
@@ -53,60 +52,74 @@ current_dir() {
 usage() {
 cat << EOF
 
-USAGE: $0 [-h]
+USAGE: $0 [-h] src_host src_user src_password dst_user dst_password
 
 DESCRIPTION:
-    This script uses to convert asterisk database to ch2o. The steps as follow:
-    1. login to destination host.
-    2. install mysql and config user & password.
-    3. config environment(jump to # NEED CONFIG).
-    4. execute this script.
+    This script uses to transfer data from asterisk to ch2o. You need login to destination host and execute this script.
+
+    src_host        source host where data locate. can be ip or domain.
+    src_user        the user of source database.
+    src_password    the password of source database. must be '' if without password.
+    dst_user        the user of destination database.
+    dst_password    the password of destination database. must be '' if without password.
 
 OPTIONS:
     -h                Show this help message and exit
 
+EXAMPLE:
+    $0 120.24.89.194 root 123456 root 123456
+    $0 localhost root 123456 root ''
 EOF
+
+    exit
 }
 
 while getopts 'h' arg; do
     case $arg in
         h)
             usage
-            exit;;
+            ;;
         ?)
             usage
-            exit;;
+            ;;
     esac
 done
 
 shift $(($OPTIND - 1))
 
+[ ! $# -eq 5 ] && usage
 
-# NEED CONFIG
-src_user="root"
-src_password="starnetdh"
+src_host=$1
+src_user=$2
+src_password=$3
+dst_user=$4
+dst_password=$5
 
-dst_user="root"
-dst_password="123456"
-
-# -------
-src_mysql="mysql -u$src_user -p$src_password"
-src_mysqldump="mysqldump -u$src_user -p$src_password"
+# config
+src_mysql="mysql -u$src_user -p$src_password -h$src_host"
+src_mysqldump="mysqldump -u$src_user -p$src_password -h$src_host"
 src_database="asterisk"
-src_ip="120.24.89.194"
-
 dst_mysql="mysql -u$dst_user -p$dst_password"
 dst_database="ch2o"
 
+check() {
+    command -v mysql >/dev/null 2>&1 || { error >&2 "The mysql is not installed. Please install mysql first"; exit -1; }
+    [ -n "`$src_mysql -e 'clear' 2>&1|grep 'ERROR 2002'`" ] && { error "The source mysql service not start. Please start mysql service first."; exit -1; }
+    [ -n "`$src_mysql -e 'clear' 2>&1|grep 'ERROR 1045'`" ] && { error "The source mysql user or password incorrect. Please check it."; exit -1; }
+    [ -n "`$dst_mysql -e 'clear' 2>&1|grep 'ERROR 2002'`" ] && { error "The destination mysql service not start. Please start mysql service first."; exit -1; }
+    [ -n "`$dst_mysql -e 'clear' 2>&1|grep 'ERROR 1045'`" ] && { error "The destination mysql user or password incorrect. Please check it."; exit -1; }
+    info 'check user and password ... ok.'
+}
+
 create_dst_database() {
-    $dst_mysql -e "CREATE DATABASE IF NOT EXISTS $dst_database" > /dev/null 2>&1
+    $dst_mysql -e "CREATE DATABASE IF NOT EXISTS $dst_database" 
     info "create database $dst_database successfully."
 }
 
 execute_mysql_statement(){
     database=$1
     statement=$2
-    $dst_mysql -e "USE $1;$2" > /dev/null 2>&1
+    $dst_mysql -e "USE $1;$2"
 }
 
 create_table_group() {
@@ -184,16 +197,15 @@ create_table_user_status() {
 }
 
 dump_src_data() {
-    info "dump source data from $src_ip..."
-    ssh root@$src_ip "$src_mysqldump $src_database sip_groups sip_peers_groups sippeers > /root/asterisk.sql"
-    scp root@$src_ip:/root/asterisk.sql .
-    info "dump source data successfully."
+    info "dump data from $src_host..."
+    $src_mysqldump $src_database sip_groups sip_peers_groups sippeers > asterisk.sql
+    info "dump data successfully."
 }
 
 import_src_data() {
     clean_unuse_table
     info "import source data ..."
-    $dst_mysql $dst_database < asterisk.sql >/dev/null 2>&1
+    $dst_mysql $dst_database < asterisk.sql 
     info "import source data successfully."
 }
 
@@ -222,6 +234,9 @@ sync_to_table_group_user() {
 ####           Main Entry              ####
 ###########################################
 
+# check 
+check
+
 # prepare destination database and table
 create_dst_database
 create_table_group
@@ -244,4 +259,4 @@ sync_to_table_group_user
 rm -rf asterisk.sql
 clean_unuse_table
 
-info "Congratulations! Convert successfully."
+info "Congratulations! Transfer successfully."
