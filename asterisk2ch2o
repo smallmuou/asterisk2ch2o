@@ -1,0 +1,244 @@
+#!/bin/bash
+#
+# Copyright (C) 2014 Wenva <lvyexuwenfa100@126.com>
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is furnished
+# to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+set -e
+
+spushd() {
+     pushd "$1" 2>&1> /dev/null
+}
+
+spopd() {
+     popd 2>&1> /dev/null
+}
+
+info() {
+     local green="\033[1;32m"
+     local normal="\033[0m"
+     echo -e "[${green}INFO${normal}] $1"
+}
+
+error() {
+     local red="\033[1;31m"
+     local normal="\033[0m"
+     echo -e "[${red}ERROR${normal}] $1"
+}
+
+# 获取当前目录
+current_dir() {
+    if [ ${0:0:1} = '/' ] || [ ${0:0:1} = '~' ]; then
+        echo "$(dirname $0)"
+    else
+        echo "`pwd`/$(dirname $0)"
+    fi
+}
+
+usage() {
+cat << EOF
+
+USAGE: $0 [-h]
+
+DESCRIPTION:
+    This script uses to convert asterisk database to ch2o. The steps as follow:
+    1. login to destination host.
+    2. install mysql and config user & password.
+    3. config environment(jump to # NEED CONFIG).
+    4. execute this script.
+
+OPTIONS:
+    -h                Show this help message and exit
+
+EOF
+}
+
+while getopts 'h' arg; do
+    case $arg in
+        h)
+            usage
+            exit;;
+        ?)
+            usage
+            exit;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+
+# NEED CONFIG
+src_user="root"
+src_password="starnetdh"
+
+dst_user="root"
+dst_password="123456"
+
+# -------
+src_mysql="mysql -u$src_user -p$src_password"
+src_mysqldump="mysqldump -u$src_user -p$src_password"
+src_database="asterisk"
+src_ip="120.24.89.194"
+
+dst_mysql="mysql -u$dst_user -p$dst_password"
+dst_database="ch2o"
+
+create_dst_database() {
+    $dst_mysql -e "CREATE DATABASE IF NOT EXISTS $dst_database" > /dev/null 2>&1
+    info "create database $dst_database successfully."
+}
+
+execute_mysql_statement(){
+    database=$1
+    statement=$2
+    $dst_mysql -e "USE $1;$2" > /dev/null 2>&1
+}
+
+create_table_group() {
+    execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_group (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  deleted bit(1) NOT NULL,
+  createdTime datetime NOT NULL,
+  groupIdentity varchar(255) NOT NULL,
+  groupSipNum varchar(255) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY UK_d7ycd47tf53u14prj1q5tewcl (groupIdentity),
+  UNIQUE KEY UK_1b0ap84j4vwa6j2bt01rylowi (groupSipNum)
+)"
+    info "create table tb_sip_group successfully."
+}
+
+create_table_group_user() {
+    execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_group_user (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  deleted bit(1) NOT NULL,
+  createdTime datetime NOT NULL,
+  groupSipNum varchar(255) NOT NULL,
+  userSipNum varchar(255) NOT NULL,
+  PRIMARY KEY (id)
+)"
+    info "create table tb_sip_group_user successfully."
+}
+
+create_table_user() {
+    execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_user (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  deleted bit(1) NOT NULL,
+  contact varchar(255) DEFAULT NULL,
+  createdTime datetime DEFAULT NULL,
+  displayName varchar(255) DEFAULT NULL,
+  expiredTime datetime DEFAULT NULL,
+  identity varchar(255) NOT NULL,
+  multiMonitor bit(1) NOT NULL,
+  nat bit(1) DEFAULT NULL,
+  password varchar(64) NOT NULL,
+  regStatus varchar(255) DEFAULT NULL,
+  server varchar(255) DEFAULT NULL,
+  serverPort varchar(255) DEFAULT NULL,
+  transport varchar(255) DEFAULT NULL,
+  userAgent varchar(255) DEFAULT NULL,
+  userIP varchar(255) DEFAULT NULL,
+  userPort varchar(255) DEFAULT NULL,
+  userSipNum varchar(255) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY UK_r354fqijfev7r7ojpk9ehb3wj (userSipNum),
+  UNIQUE KEY UK_g2ko47tbh2c0f3npxykkvh4cu (identity)
+)"
+    info "create table tb_sip_user successfully."
+}
+
+create_table_user_status() {
+    execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_user_status (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  deleted bit(1) NOT NULL,
+  contact varchar(255) DEFAULT NULL,
+  displayName varchar(255) DEFAULT NULL,
+  expiredTime datetime DEFAULT NULL,
+  nat bit(1) NOT NULL,
+  server varchar(255) DEFAULT NULL,
+  serverPort varchar(255) DEFAULT NULL,
+  status varchar(255) DEFAULT NULL,
+  transport varchar(255) DEFAULT NULL,
+  userAgent varchar(255) DEFAULT NULL,
+  userIP varchar(255) DEFAULT NULL,
+  userPort varchar(255) DEFAULT NULL,
+  userSipNum varchar(255) NOT NULL,
+  PRIMARY KEY (id)
+)"
+    info "create table tb_sip_user_status successfully."
+}
+
+dump_src_data() {
+    info "dump source data from $src_ip..."
+    ssh root@$src_ip "$src_mysqldump $src_database sip_groups sip_peers_groups sippeers > /root/asterisk.sql"
+    scp root@$src_ip:/root/asterisk.sql .
+    info "dump source data successfully."
+}
+
+import_src_data() {
+    clean_unuse_table
+    info "import source data ..."
+    $dst_mysql $dst_database < asterisk.sql >/dev/null 2>&1
+    info "import source data successfully."
+}
+
+clean_unuse_table(){
+    execute_mysql_statement $dst_database "DROP TABLE IF EXISTS sippeers"
+    execute_mysql_statement $dst_database "DROP TABLE IF EXISTS sip_groups"
+    execute_mysql_statement $dst_database "DROP TABLE IF EXISTS sip_peers_groups"
+}
+
+sync_to_table_group() {
+    execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_group (deleted,createdTime,groupSipNum,groupIdentity) SELECT 0,current_timestamp,name,IFNULL(identity,CONCAT('group',UNIX_TIMESTAMP(),FLOOR(rand()*1000000000))) FROM sip_groups WHERE name NOT LIKE '%\_%'"
+    info "sync table group successfully."
+}
+
+sync_to_table_user() {
+    execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_user (deleted,createdTime,identity,multiMonitor,password,userSipNum) SELECT 0,current_timestamp,IFNULL(identity,CONCAT('user',UNIX_TIMESTAMP(),FLOOR(rand()*1000000000))),IF(STRCMP(MID(name,1,1), 'T')=0, 1, 0),secret,name FROM sippeers WHERE identity LIKE '%:%'"
+    info "sync table user successfully."
+}
+
+sync_to_table_group_user() {
+    execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_group_user (deleted,createdTime,groupSipNum,userSipNum) SELECT 0,current_timestamp,group_name,sip_num FROM sip_peers_groups WHERE sip_num NOT LIKE '%\_%'"
+    info "sync table group_user successfully."
+}
+
+# prepare destination database and table
+create_dst_database
+create_table_group
+create_table_group_user
+create_table_user
+create_table_user_status
+
+# dump data from source database 
+dump_src_data
+
+# import to destination database
+import_src_data
+
+# sync to destination database
+sync_to_table_group
+sync_to_table_user
+sync_to_table_group_user
+
+# cleanup
+rm -rf asterisk.sql
+clean_unuse_table
+
+info "Congratulations! Convert successfully."
