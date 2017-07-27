@@ -42,7 +42,6 @@ error() {
      echo -e "[${red}ERROR${normal}] $1"
 }
 
-# 获取当前目录
 current_dir() {
     if [ ${0:0:1} = '/' ] || [ ${0:0:1} = '~' ]; then
         echo "$(dirname $0)"
@@ -218,6 +217,10 @@ sync_to_table_group_user() {
     execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_group_user (deleted,createdTime,groupSipNum,userSipNum) SELECT 0,current_timestamp,group_name,sip_num FROM sip_peers_groups WHERE sip_num NOT LIKE '%\_%'"
     info "sync table group_user successfully."
 }
+
+###########################################
+####           Main Entry              ####
+###########################################
 
 # prepare destination database and table
 create_dst_database
