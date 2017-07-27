@@ -29,10 +29,17 @@ spushd() {
 spopd() {
      popd 2>&1> /dev/null
 }
+
 info() {
      local green="\033[1;32m"
      local normal="\033[0m"
      echo -e "[${green}INFO${normal}] $1"
+}
+
+info_() {
+     local green="\033[1;32m"
+     local normal="\033[0m"
+     echo "[${green}INFO${normal}] $1"
 }
 
 error() {
@@ -103,17 +110,20 @@ dst_mysql="mysql -u$dst_user -p$dst_password"
 dst_database="ch2o"
 
 check() {
+    echo -n 'check user and password ... '
     command -v mysql >/dev/null 2>&1 || { error >&2 "The mysql is not installed. Please install mysql first"; exit -1; }
     [ -n "`$src_mysql -e 'clear' 2>&1|grep 'ERROR 2002'`" ] && { error "The source mysql service not start. Please start mysql service first."; exit -1; }
     [ -n "`$src_mysql -e 'clear' 2>&1|grep 'ERROR 1045'`" ] && { error "The source mysql user or password incorrect. Please check it."; exit -1; }
     [ -n "`$dst_mysql -e 'clear' 2>&1|grep 'ERROR 2002'`" ] && { error "The destination mysql service not start. Please start mysql service first."; exit -1; }
     [ -n "`$dst_mysql -e 'clear' 2>&1|grep 'ERROR 1045'`" ] && { error "The destination mysql user or password incorrect. Please check it."; exit -1; }
-    info 'check user and password ... ok.'
+    echo 'ok'
 }
 
+
 create_dst_database() {
+    echo -n "create database $dst_database ... "
     $dst_mysql -e "CREATE DATABASE IF NOT EXISTS $dst_database" 
-    info "create database $dst_database successfully."
+    echo "ok"
 }
 
 execute_mysql_statement(){
@@ -123,6 +133,7 @@ execute_mysql_statement(){
 }
 
 create_table_group() {
+    echo -n "create table tb_sip_group ... "
     execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_group (
   id int(11) NOT NULL AUTO_INCREMENT,
   deleted bit(1) NOT NULL,
@@ -133,10 +144,11 @@ create_table_group() {
   UNIQUE KEY UK_d7ycd47tf53u14prj1q5tewcl (groupIdentity),
   UNIQUE KEY UK_1b0ap84j4vwa6j2bt01rylowi (groupSipNum)
 )"
-    info "create table tb_sip_group successfully."
+    echo "ok"
 }
 
 create_table_group_user() {
+    echo -n "create table tb_sip_group_user ... "
     execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_group_user (
   id int(11) NOT NULL AUTO_INCREMENT,
   deleted bit(1) NOT NULL,
@@ -145,10 +157,11 @@ create_table_group_user() {
   userSipNum varchar(255) NOT NULL,
   PRIMARY KEY (id)
 )"
-    info "create table tb_sip_group_user successfully."
+    echo "ok"
 }
 
 create_table_user() {
+    echo -n "create table tb_sip_user ... "
     execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_user (
   id int(11) NOT NULL AUTO_INCREMENT,
   deleted bit(1) NOT NULL,
@@ -172,10 +185,11 @@ create_table_user() {
   UNIQUE KEY UK_r354fqijfev7r7ojpk9ehb3wj (userSipNum),
   UNIQUE KEY UK_g2ko47tbh2c0f3npxykkvh4cu (identity)
 )"
-    info "create table tb_sip_user successfully."
+    echo "ok"
 }
 
 create_table_user_status() {
+    echo -n "create table tb_sip_user_status ... "
     execute_mysql_statement $dst_database "CREATE TABLE IF NOT EXISTS tb_sip_user_status (
   id int(11) NOT NULL AUTO_INCREMENT,
   deleted bit(1) NOT NULL,
@@ -193,20 +207,20 @@ create_table_user_status() {
   userSipNum varchar(255) NOT NULL,
   PRIMARY KEY (id)
 )"
-    info "create table tb_sip_user_status successfully."
+    echo "ok"
 }
 
 dump_src_data() {
-    info "dump data from $src_host..."
+    echo -n "dump data from $src_host ... "
     $src_mysqldump $src_database sip_groups sip_peers_groups sippeers > asterisk.sql
-    info "dump data successfully."
+    echo "ok"
 }
 
 import_src_data() {
     clean_unuse_table
-    info "import source data ..."
+    echo -n "import source data ... "
     $dst_mysql $dst_database < asterisk.sql 
-    info "import source data successfully."
+    echo "ok"
 }
 
 clean_unuse_table(){
@@ -216,18 +230,21 @@ clean_unuse_table(){
 }
 
 sync_to_table_group() {
+    echo -n "sync group table ... "
     execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_group (deleted,createdTime,groupSipNum,groupIdentity) SELECT 0,current_timestamp,name,IFNULL(identity,CONCAT('group',UNIX_TIMESTAMP(),FLOOR(rand()*1000000000))) FROM sip_groups WHERE name NOT LIKE '%\_%'"
-    info "sync table group successfully."
+    echo "done"
 }
 
 sync_to_table_user() {
+    echo -n "sync user table ... "
     execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_user (deleted,createdTime,identity,multiMonitor,password,userSipNum) SELECT 0,current_timestamp,IFNULL(identity,CONCAT('user',UNIX_TIMESTAMP(),FLOOR(rand()*1000000000))),IF(STRCMP(MID(name,1,1), 'T')=0, 1, 0),secret,name FROM sippeers WHERE identity LIKE '%:%'"
-    info "sync table user successfully."
+    echo "done"
 }
 
 sync_to_table_group_user() {
+    echo -n "sync group_user table ... "
     execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_group_user (deleted,createdTime,groupSipNum,userSipNum) SELECT 0,current_timestamp,group_name,sip_num FROM sip_peers_groups WHERE sip_num NOT LIKE '%\_%'"
-    info "sync table group_user successfully."
+    echo "ok"
 }
 
 ###########################################
