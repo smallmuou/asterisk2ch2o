@@ -104,7 +104,7 @@ dst_user=$4
 dst_password=$5
 
 # config
-src_mysql="mysql -u$src_user -p$src_password -h$src_host"
+src_mysql="mysql -u$src_user -p$src_password -h$src_host --connect_timeout=5"
 src_mysqldump="mysqldump -u$src_user -p$src_password -h$src_host"
 src_database="asterisk"
 dst_mysql="mysql -u$dst_user -p$dst_password"
@@ -114,7 +114,7 @@ logfile="asterisk2ch2o.log"
 check() {
     echo -n 'check user and password ... '
     command -v mysql >/dev/null 2>&1 || { error >&2 "The mysql is not installed. Please install mysql first"; exit -1; }
-    [ -n "`$src_mysql -e 'clear' 2>&1|grep 'ERROR 2002'`" ] && { error "The source mysql service not start. Please start mysql service first."; exit -1; }
+    [ -n "`$src_mysql -e 'clear' 2>&1|grep 'ERROR 200'`" ] && { error "The source mysql service not start. Please start mysql service first."; exit -1; }
     [ -n "`$src_mysql -e 'clear' 2>&1|grep 'ERROR 1045'`" ] && { error "The source mysql user or password incorrect. Please check it."; exit -1; }
     [ -n "`$dst_mysql -e 'clear' 2>&1|grep 'ERROR 2002'`" ] && { error "The destination mysql service not start. Please start mysql service first."; exit -1; }
     [ -n "`$dst_mysql -e 'clear' 2>&1|grep 'ERROR 1045'`" ] && { error "The destination mysql user or password incorrect. Please check it."; exit -1; }
