@@ -63,6 +63,7 @@ USAGE: $0 [-h] src_host src_user src_password dst_user dst_password
 
 DESCRIPTION:
     This script uses to transfer data from asterisk to ch2o. You need login to destination host and execute this script.
+    If you can't see congratulations, that means failed. you can check asterisk2ch2o.log for details.
 
     src_host        source host where data locate. can be ip or domain.
     src_user        the user of source database.
@@ -108,6 +109,7 @@ src_mysqldump="mysqldump -u$src_user -p$src_password -h$src_host"
 src_database="asterisk"
 dst_mysql="mysql -u$dst_user -p$dst_password"
 dst_database="ch2o"
+logfile="asterisk2ch2o.log"
 
 check() {
     echo -n 'check user and password ... '
@@ -119,17 +121,16 @@ check() {
     echo 'ok'
 }
 
-
 create_dst_database() {
     echo -n "create database $dst_database ... "
-    $dst_mysql -e "CREATE DATABASE IF NOT EXISTS $dst_database" 
+    $dst_mysql -e "CREATE DATABASE IF NOT EXISTS $dst_database" >>$logfile 2>&1
     echo "ok"
 }
 
 execute_mysql_statement(){
     database=$1
     statement=$2
-    $dst_mysql -e "USE $1;$2"
+    $dst_mysql -e "USE $1;$2" >>$logfile 2>&1
 }
 
 create_table_group() {
@@ -212,14 +213,14 @@ create_table_user_status() {
 
 dump_src_data() {
     echo -n "dump data from $src_host ... "
-    $src_mysqldump $src_database sip_groups sip_peers_groups sippeers > asterisk.sql
+    $src_mysqldump $src_database sip_groups sip_peers_groups sippeers 2>>$logfile > asterisk.sql 
     echo "ok"
 }
 
 import_src_data() {
     clean_unuse_table
     echo -n "import source data ... "
-    $dst_mysql $dst_database < asterisk.sql 
+    $dst_mysql $dst_database < asterisk.sql 2>>$logfile
     echo "ok"
 }
 
@@ -232,13 +233,13 @@ clean_unuse_table(){
 sync_to_table_group() {
     echo -n "sync group table ... "
     execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_group (deleted,createdTime,groupSipNum,groupIdentity) SELECT 0,current_timestamp,name,IFNULL(identity,CONCAT('group',UNIX_TIMESTAMP(),FLOOR(rand()*1000000000))) FROM sip_groups WHERE name NOT LIKE '%\_%'"
-    echo "done"
+    echo "ok"
 }
 
 sync_to_table_user() {
     echo -n "sync user table ... "
     execute_mysql_statement $dst_database "INSERT IGNORE INTO tb_sip_user (deleted,createdTime,identity,multiMonitor,password,userSipNum) SELECT 0,current_timestamp,IFNULL(identity,CONCAT('user',UNIX_TIMESTAMP(),FLOOR(rand()*1000000000))),IF(STRCMP(MID(name,1,1), 'T')=0, 1, 0),secret,name FROM sippeers WHERE identity LIKE '%:%'"
-    echo "done"
+    echo "ok"
 }
 
 sync_to_table_group_user() {
@@ -253,6 +254,10 @@ sync_to_table_group_user() {
 
 # check 
 check
+
+# setup log
+echo '' > $logfile
+info "If you can't see congratulations, that means failed. you can check $logfile for details."
 
 # prepare destination database and table
 create_dst_database
