@@ -74,7 +74,7 @@ DESCRIPTION:
 OPTIONS:
     -h                Show this help message and exit
 
-EXAMPLE:
+EXAMPLES:
     $0 120.24.89.194 root 123456 root 123456
     $0 localhost root 123456 root ''
 EOF
@@ -278,7 +278,8 @@ sync_to_table_user
 sync_to_table_group_user
 
 # cleanup
-rm -rf asterisk.sql
 clean_unuse_table
+rm -rf asterisk.sql
+rm -rf $logfile
 
 info "Congratulations! Transfer successfully."
